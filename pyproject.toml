@@ -1,6 +1,7 @@
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+markers = ["db: needs a running PostgreSQL with the schema applied (skipped otherwise)"]
 
 [tool.ruff]
 line-length = 100

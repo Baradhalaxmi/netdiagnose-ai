@@ -92,9 +92,15 @@ CREATE TABLE IF NOT EXISTS incidents (
 CREATE INDEX IF NOT EXISTS idx_incidents_status ON incidents (status, opened_at DESC);
 CREATE INDEX IF NOT EXISTS idx_incidents_device ON incidents (device_id, opened_at DESC);
 
-ALTER TABLE anomalies
-    ADD CONSTRAINT fk_anomalies_incident
-    FOREIGN KEY (incident_id) REFERENCES incidents(id) ON DELETE SET NULL;
+-- Wrapped in a DO block so the whole file can be re-run safely.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_anomalies_incident') THEN
+        ALTER TABLE anomalies
+            ADD CONSTRAINT fk_anomalies_incident
+            FOREIGN KEY (incident_id) REFERENCES incidents(id) ON DELETE SET NULL;
+    END IF;
+END $$;
 
 -- ---------------------------------------------------------------
 -- Evidence (observed vs baseline, cited by diagnoses)

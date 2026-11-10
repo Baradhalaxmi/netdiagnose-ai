@@ -59,11 +59,26 @@ print(df["attack_cat"].value_counts())
 
 ## 5. Database setup (Week 4)
 
-```bash
-psql -U postgres -c "CREATE USER netdiag WITH PASSWORD 'netdiag';"
-psql -U postgres -c "CREATE DATABASE netdiagnose OWNER netdiag;"
-psql -U netdiag -d netdiagnose -f db/schema.sql
+Create the app user and database once, as the `postgres` superuser (asks for its password):
+
+```powershell
+# Windows (PowerShell); psql is not on PATH by default
+& "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U postgres -h localhost `
+  -c "CREATE USER netdiag WITH PASSWORD 'netdiag';" `
+  -c "CREATE DATABASE netdiagnose OWNER netdiag;"
 ```
+
+Then, from the project root with the venv active:
+
+```bash
+cp .env.example .env                      # if you have not already
+python -m backend.db.init_db              # apply db/schema.sql + seed 8 devices (safe to re-run)
+python -m backend.db.load_dataset         # load the testing set (82k rows) and score it
+pytest -q                                 # DB tests now run instead of skipping
+```
+
+Useful options: `--limit 60000` (sample), `--days 3` (time span), `--no-score`, `--score-only`.
+Analysis queries are in `db/queries.sql`.
 
 ## 6. Run the services (Weeks 5–6)
 

@@ -47,7 +47,8 @@ def normalise(raw: np.ndarray, raw_min: float, raw_max: float) -> np.ndarray:
 class Detector:
     """A trained pipeline plus the metadata needed to interpret its scores."""
 
-    def __init__(self, model: Pipeline, meta: dict):
+    def __init__(self, model: Pipeline, meta: dict, threshold: float | None = None):
+        """Threshold priority: explicit argument > ANOMALY_THRESHOLD env var > meta."""
         self.model = model
         self.meta = meta
         self.version: str = meta["model_version"]
@@ -55,11 +56,15 @@ class Detector:
         self.raw_min: float = meta["score"]["raw_min"]
         self.raw_max: float = meta["score"]["raw_max"]
         self.threshold: float = float(
-            os.getenv("ANOMALY_THRESHOLD") or meta["score"]["threshold"]
+            threshold
+            if threshold is not None
+            else os.getenv("ANOMALY_THRESHOLD") or meta["score"]["threshold"]
         )
 
     @classmethod
-    def load(cls, model_path: str | Path = DEFAULT_MODEL_PATH) -> "Detector":
+    def load(
+        cls, model_path: str | Path = DEFAULT_MODEL_PATH, threshold: float | None = None
+    ) -> "Detector":
         model_path = Path(model_path)
         meta_path = model_path.with_name("model_meta.json")
         if not model_path.exists():
@@ -67,7 +72,7 @@ class Detector:
                 f"{model_path} not found. Train it first: python -m ml.train"
             )
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
-        return cls(joblib.load(model_path), meta)
+        return cls(joblib.load(model_path), meta, threshold)
 
     def score_frame(self, df: pd.DataFrame) -> pd.DataFrame:
         """Score many rows. Returns columns ``score`` and ``is_anomaly``."""
