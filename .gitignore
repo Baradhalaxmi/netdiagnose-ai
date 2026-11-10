@@ -1,11 +1,32 @@
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*.egg-info/
 .venv/
+venv/
+
+# Secrets
 .env
+
+# Jupyter
 .ipynb_checkpoints/
 
+# Data (UNSW-NB15 is large and has its own licence)
 data/raw/
 data/processed/
 
+# Model artifacts (random_forest.joblib alone is ~230 MB)
 *.pkl
 *.joblib
+
+# Test / lint caches
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
