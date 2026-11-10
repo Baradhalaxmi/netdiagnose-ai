@@ -44,11 +44,15 @@ data/  notebooks/  ml/  diagnosis/  agent/  backend/  dashboard/
 simulator/  db/  tests/  docker/  docs/
 ```
 
-## Results (fill in after measuring)
+## Results
+Measured on the official UNSW-NB15 **testing set** (82,332 flows). Isolation Forest is trained on normal flows only; its threshold is chosen for max F1 on a validation split of the training set. Reproduce with `python -m ml.train --baseline` (full numbers in `ml/model_meta.json`).
+
 | Model | Precision | Recall | F1 | ROC-AUC |
 |---|---|---|---|---|
-| Isolation Forest | _tbd_ | _tbd_ | _tbd_ | _tbd_ |
-| Random Forest (baseline) | _tbd_ | _tbd_ | _tbd_ | _tbd_ |
+| Isolation Forest (unsupervised) | 0.72 | 0.83 | 0.77 | 0.79 |
+| Random Forest (supervised baseline) | 0.85 | 0.98 | 0.91 | 0.98 |
+
+Isolation Forest misses the most on Shellcode (50% detected), Fuzzers (54%) and Reconnaissance (59%), and catches Generic (99%), Backdoor (93%) and DoS (91%) attacks well.
 
 | Scenario | Expected cause | Top-ranked cause | Correct |
 |---|---|---|---|
