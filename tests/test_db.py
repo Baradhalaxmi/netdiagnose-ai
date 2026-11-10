@@ -11,9 +11,6 @@ from datetime import datetime, timedelta, timezone
 import numpy as np
 import pandas as pd
 import pytest
-from sqlalchemy import text
-from sqlalchemy.exc import OperationalError
-from sqlalchemy.orm import Session
 
 from backend.config import Settings
 from backend.db import crud
@@ -89,67 +86,41 @@ def test_interface_util_uses_each_devices_capacity():
         assert r["interface_utilization_pct"] == pytest.approx(expected)
 
 
-# ---- database (integration) ------------------------------------------
-@pytest.fixture
-def session():
-    from backend.db.session import engine
-
-    try:
-        conn = engine.connect()
-    except Exception as exc:  # no server or bad credentials
-        pytest.skip(f"PostgreSQL not available: {exc.__class__.__name__}")
-    # Open the outer transaction first: any query (even the probe below)
-    # would otherwise autobegin one and make conn.begin() fail.
-    trans = conn.begin()
-    try:
-        conn.execute(text("SELECT 1 FROM devices LIMIT 1"))
-    except Exception as exc:  # schema not applied
-        trans.rollback()
-        conn.close()
-        pytest.skip(f"Schema not applied: {exc.__class__.__name__}")
-    s = Session(bind=conn, join_transaction_mode="create_savepoint")
-    try:
-        yield s
-    finally:
-        s.close()
-        trans.rollback()
-        conn.close()
-
-
+# ---- database (integration; db_session fixture is in conftest.py) ----
 @pytest.mark.db
-def test_insert_metrics_score_and_query(session):
+def test_insert_metrics_score_and_query(db_session):
     crud.upsert_devices(
-        session,
+        db_session,
         [{"hostname": "test-dev-a", "device_type": "router", "link_capacity_mbps": 1000}],
     )
-    dev = next(d for d in crud.list_devices(session) if d.hostname == "test-dev-a")
+    dev = next(d for d in crud.list_devices(db_session) if d.hostname == "test-dev-a")
     devices = [{"id": dev.id, "link_capacity_mbps": dev.link_capacity_mbps}]
     rows = build_metric_rows(_raw(10), devices, END, days=1, rng=np.random.default_rng(0))
-    crud.bulk_insert_metrics(session, rows)
+    crud.bulk_insert_metrics(db_session, rows)
 
-    items, total = crud.get_metrics(session, device_id=dev.id, limit=5)
+    items, total = crud.get_metrics(db_session, device_id=dev.id, limit=5)
     assert total == 10 and len(items) == 5
     assert items[0].ts >= items[-1].ts                    # newest first
 
-    pending = [r for r in crud.unscored_metrics(session, 100_000) if r[1] == dev.id]
+    pending = [r for r in crud.unscored_metrics(db_session, 100_000) if r[1] == dev.id]
     assert len(pending) == 10
 
     crud.bulk_insert_anomalies(
-        session,
+        db_session,
         [
             {"metric_id": mid, "device_id": did, "detected_at": ts, "score": 0.9,
              "is_anomaly": True, "model_version": "test"}
             for mid, did, ts, _ in pending
         ],
     )
-    assert not [r for r in crud.unscored_metrics(session, 100_000) if r[1] == dev.id]
+    assert not [r for r in crud.unscored_metrics(db_session, 100_000) if r[1] == dev.id]
 
-    per_hour = [r for r in crud.anomalies_per_device_per_hour(session) if r["hostname"] == "test-dev-a"]
+    per_hour = [r for r in crud.anomalies_per_device_per_hour(db_session) if r["hostname"] == "test-dev-a"]
     assert sum(r["anomalies"] for r in per_hour) == 10
 
 
 @pytest.mark.db
-def test_upsert_devices_is_idempotent(session):
+def test_upsert_devices_is_idempotent(db_session):
     dev = {"hostname": "test-dev-b", "device_type": "switch", "link_capacity_mbps": 1000}
-    assert crud.upsert_devices(session, [dev]) == 1
-    assert crud.upsert_devices(session, [dev]) == 0
+    assert crud.upsert_devices(db_session, [dev]) == 1
+    assert crud.upsert_devices(db_session, [dev]) == 0

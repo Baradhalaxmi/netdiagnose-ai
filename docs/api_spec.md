@@ -75,10 +75,17 @@ Response `201`:
 { "inserted": 1, "anomalies": 1, "incidents_touched": [ { "id": 7, "code": "INC-0007", "created": true } ] }
 ```
 
+Notes (as implemented):
+- `features` must contain every model feature (the 42 UNSW-NB15 flow fields, see `ml/model_meta.json`) when `detect=true`; otherwise `422 VALIDATION_ERROR` lists the missing ones.
+- Network metrics omitted from a row (`latency_ms`, `jitter_ms`, `packet_loss_pct`, `throughput_mbps`) are derived from `features`.
+- `ts` defaults to now; timestamps without a timezone are treated as UTC.
+- Unknown `device_id` → `404 NOT_FOUND`. Up to 5000 rows per request.
+- Flagged rows are grouped into incidents: same device within `INCIDENT_WINDOW_MINUTES` → same incident; open incidents quiet for `INCIDENT_QUIET_MINUTES` are closed on the next ingest.
+
 ### `POST /detect`
 Score a record **without** storing it (stateless).
 
-Request: a single metric object (same fields as above).
+Request: `{ "features": { ...UNSW-NB15 flow fields... } }`
 Response:
 ```json
 { "is_anomaly": true, "score": 0.82, "model_version": "iforest-2026-01-10" }
