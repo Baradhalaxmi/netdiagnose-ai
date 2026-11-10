@@ -45,14 +45,17 @@ simulator/  db/  tests/  docker/  docs/
 ```
 
 ## Results
-Measured on the official UNSW-NB15 **testing set** (82,332 flows). Isolation Forest is trained on normal flows only; its threshold is chosen for max F1 on a validation split of the training set. Reproduce with `python -m ml.train --baseline` (full numbers in `ml/model_meta.json`).
+Measured on the official UNSW-NB15 **testing set** (82,332 flows). Isolation Forest is trained on normal flows only; its threshold is chosen for max F1 on a validation split of the training set. Reproduce with `python -m ml.train --n-estimators 300 --max-samples 8192 --log-numeric --baseline` (full numbers in `ml/model_meta.json`).
 
 | Model | Precision | Recall | F1 | ROC-AUC |
 |---|---|---|---|---|
-| Isolation Forest (unsupervised) | 0.72 | 0.83 | 0.77 | 0.79 |
+| Isolation Forest, tuned (log-scaled features, 8192 rows/tree, 300 trees) | 0.78 | 0.84 | **0.81** | **0.87** |
+| Isolation Forest, untuned (raw features, defaults) | 0.72 | 0.83 | 0.77 | 0.79 |
 | Random Forest (supervised baseline) | 0.85 | 0.98 | 0.91 | 0.98 |
 
-Isolation Forest misses the most on Shellcode (50% detected), Fuzzers (54%) and Reconnaissance (59%), and catches Generic (99%), Backdoor (93%) and DoS (91%) attacks well.
+Tuning: 24 configs, chosen on validation F1 only ([docs/tuning_results.md](docs/tuning_results.md)). Log-scaling heavy-tailed features gave the biggest gain; removing duplicate training rows did not help.
+
+Isolation Forest misses the most on Fuzzers (49% detected), Shellcode (50%) and Reconnaissance (59%), and catches Generic (99%), Backdoor (93%) and DoS (91%) attacks well.
 
 | Scenario | Expected cause | Top-ranked cause | Correct |
 |---|---|---|---|

@@ -16,7 +16,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import OneHotEncoder
+from sklearn.preprocessing import FunctionTransformer, OneHotEncoder
 
 # --------------------------------------------------------------------
 # Column definitions
@@ -101,12 +101,26 @@ def numerical_cols(X: pd.DataFrame) -> list[str]:
     return [c for c in X.columns if c not in CATEGORICAL_COLS]
 
 
-def build_preprocessor(X: pd.DataFrame) -> ColumnTransformer:
-    """One-hot encode categoricals, pass numerics through.
+def signed_log1p(x):
+    """log1p that keeps sign, so it is safe for any numeric input."""
+    x = np.asarray(x, dtype=float)
+    return np.sign(x) * np.log1p(np.abs(x))
 
-    Same transform as notebooks/01_exploration.ipynb. Unknown categories
-    at inference time are ignored instead of raising.
+
+def build_preprocessor(X: pd.DataFrame, log_numeric: bool = False) -> ColumnTransformer:
+    """One-hot encode categoricals; pass numerics through or log-scale them.
+
+    ``log_numeric=False`` is the transform from notebooks/01_exploration.ipynb.
+    Log-scaling matters for Isolation Forest: split values are drawn uniformly
+    between a feature's min and max, so heavy-tailed columns (sload up to 6e9)
+    waste almost every split on empty space. Unknown categories at inference
+    time are ignored instead of raising.
     """
+    numeric = (
+        FunctionTransformer(signed_log1p, feature_names_out="one-to-one")
+        if log_numeric
+        else "passthrough"
+    )
     return ColumnTransformer(
         transformers=[
             (
@@ -114,7 +128,7 @@ def build_preprocessor(X: pd.DataFrame) -> ColumnTransformer:
                 OneHotEncoder(handle_unknown="ignore", sparse_output=False),
                 CATEGORICAL_COLS,
             ),
-            ("numerical", "passthrough", numerical_cols(X)),
+            ("numerical", numeric, numerical_cols(X)),
         ]
     )
 

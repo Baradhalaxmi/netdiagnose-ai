@@ -1,12 +1,16 @@
 {
-  "model_version": "iforest-20261110-034257",
-  "trained_at": "2026-11-10T03:42:57+00:00",
+  "model_version": "iforest-20261110-035049",
+  "trained_at": "2026-11-10T03:50:49+00:00",
   "sklearn_version": "1.9.1",
   "python_version": "3.14.2",
   "params": {
-    "n_estimators": 200,
-    "max_samples": "auto",
+    "n_estimators": 300,
+    "max_samples": 8192,
     "random_state": 42,
+    "log_numeric": true,
+    "drop_duplicates": false,
+    "train_rows_used": 175341,
+    "train_rows_dropped": 0,
     "fit_rows_normal": 44800,
     "val_size": 0.2
   },
@@ -55,60 +59,60 @@
     "is_sm_ips_ports"
   ],
   "score": {
-    "raw_min": -0.16071232769039479,
-    "raw_max": 0.16693935118202308,
-    "threshold": 0.272326
+    "raw_min": -0.14953645873522964,
+    "raw_max": 0.19650413040004,
+    "threshold": 0.269745
   },
   "metrics": {
     "validation": {
-      "precision": 0.8583,
-      "recall": 0.855,
-      "f1": 0.8566,
-      "roc_auc": 0.837,
+      "precision": 0.9069,
+      "recall": 0.8425,
+      "f1": 0.8735,
+      "roc_auc": 0.8859,
       "confusion_matrix": {
-        "tn": 7831,
-        "fp": 3369,
-        "fn": 3462,
-        "tp": 20407
+        "tn": 9135,
+        "fp": 2065,
+        "fn": 3760,
+        "tp": 20109
       }
     },
     "test": {
-      "precision": 0.7206,
-      "recall": 0.8311,
-      "f1": 0.7719,
-      "roc_auc": 0.7884,
+      "precision": 0.7844,
+      "recall": 0.8405,
+      "f1": 0.8115,
+      "roc_auc": 0.8662,
       "confusion_matrix": {
-        "tn": 22391,
-        "fp": 14609,
-        "fn": 7658,
-        "tp": 37674
+        "tn": 26529,
+        "fp": 10471,
+        "fn": 7231,
+        "tp": 38101
       }
     }
   },
   "test_detection_by_attack_cat": {
-    "Shellcode": {
-      "flows": 378,
-      "detection_rate": 0.5026
-    },
     "Fuzzers": {
       "flows": 6062,
-      "detection_rate": 0.5442
+      "detection_rate": 0.4909
+    },
+    "Shellcode": {
+      "flows": 378,
+      "detection_rate": 0.4974
     },
     "Reconnaissance": {
       "flows": 3496,
-      "detection_rate": 0.593
+      "detection_rate": 0.5904
     },
     "Exploits": {
       "flows": 11132,
-      "detection_rate": 0.7662
+      "detection_rate": 0.8314
     },
     "Worms": {
       "flows": 44,
-      "detection_rate": 0.8409
+      "detection_rate": 0.8864
     },
     "DoS": {
       "flows": 4089,
-      "detection_rate": 0.9105
+      "detection_rate": 0.9088
     },
     "Analysis": {
       "flows": 677,
@@ -116,11 +120,11 @@
     },
     "Backdoor": {
       "flows": 583,
-      "detection_rate": 0.928
+      "detection_rate": 0.9314
     },
     "Generic": {
       "flows": 18871,
-      "detection_rate": 0.9887
+      "detection_rate": 0.9907
     }
   },
   "baseline_random_forest_test": {

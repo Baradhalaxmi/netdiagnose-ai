@@ -45,11 +45,14 @@ RANDOM_STATE = 42
 # Building blocks (unit-tested in tests/test_predict.py)
 # --------------------------------------------------------------------
 def fit_detector(
-    X_normal: pd.DataFrame, n_estimators: int = 200, max_samples="auto"
+    X_normal: pd.DataFrame,
+    n_estimators: int = 200,
+    max_samples="auto",
+    log_numeric: bool = False,
 ) -> Pipeline:
     pipe = Pipeline(
         [
-            ("pre", build_preprocessor(X_normal)),
+            ("pre", build_preprocessor(X_normal, log_numeric=log_numeric)),
             (
                 "iforest",
                 IsolationForest(
@@ -102,8 +105,20 @@ def train(
     n_estimators: int = 200,
     max_samples="auto",
     val_size: float = 0.2,
+    log_numeric: bool = False,
+    drop_duplicates: bool = False,
 ) -> tuple[Pipeline, dict]:
-    """Run the full protocol. Returns the fitted pipeline and its metadata."""
+    """Run the full protocol. Returns the fitted pipeline and its metadata.
+
+    ``drop_duplicates`` removes repeated flows (ignoring ``id``) from the
+    training CSV *before* the fit/validation split, so identical rows cannot
+    sit on both sides. The test CSV is never modified.
+    """
+    rows_before = len(train_df)
+    if drop_duplicates:
+        feature_cols = [c for c in train_df.columns if c != "id"]
+        train_df = train_df.drop_duplicates(subset=feature_cols)
+
     fit_df, val_df = train_test_split(
         train_df, test_size=val_size, stratify=train_df["label"], random_state=RANDOM_STATE
     )
@@ -112,7 +127,7 @@ def train(
     X_test, y_test = split_xy(test_df)
     features = list(X_fit.columns)
 
-    model = fit_detector(X_fit[y_fit == 0], n_estimators, max_samples)
+    model = fit_detector(X_fit[y_fit == 0], n_estimators, max_samples, log_numeric)
 
     raw_fit = raw_scores(model, X_fit)
     raw_min, raw_max = float(raw_fit.min()), float(raw_fit.max())
@@ -132,6 +147,10 @@ def train(
             "n_estimators": n_estimators,
             "max_samples": max_samples,
             "random_state": RANDOM_STATE,
+            "log_numeric": log_numeric,
+            "drop_duplicates": drop_duplicates,
+            "train_rows_used": int(len(train_df)),
+            "train_rows_dropped": int(rows_before - len(train_df)),
             "fit_rows_normal": int((y_fit == 0).sum()),
             "val_size": val_size,
         },
@@ -182,6 +201,13 @@ def save(model: Pipeline, meta: dict, out_dir: str | Path) -> Path:
 # --------------------------------------------------------------------
 # CLI
 # --------------------------------------------------------------------
+def parse_max_samples(value: str):
+    """'auto' stays a string, '0.5' becomes a fraction, '1024' a row count."""
+    if value == "auto":
+        return value
+    return float(value) if "." in value else int(value)
+
+
 def main(argv=None) -> None:
     p = argparse.ArgumentParser(description="Train the NetDiagnose anomaly detector.")
     p.add_argument("--train", default="data/raw/UNSW_NB15_training-set.csv")
@@ -189,17 +215,22 @@ def main(argv=None) -> None:
     p.add_argument("--out", default="ml", help="directory for model.joblib + model_meta.json")
     p.add_argument("--n-estimators", type=int, default=200)
     p.add_argument("--max-samples", default="auto", help="'auto', an int, or a float fraction")
+    p.add_argument("--log-numeric", action="store_true", help="log-scale numeric features")
+    p.add_argument("--drop-duplicates", action="store_true", help="dedupe the training CSV")
     p.add_argument("--baseline", action="store_true", help="also train a Random Forest baseline")
     args = p.parse_args(argv)
-
-    max_samples = args.max_samples
-    if max_samples != "auto":
-        max_samples = float(max_samples) if "." in max_samples else int(max_samples)
 
     train_df = pd.read_csv(args.train)
     test_df = pd.read_csv(args.test)
 
-    model, meta = train(train_df, test_df, args.n_estimators, max_samples)
+    model, meta = train(
+        train_df,
+        test_df,
+        args.n_estimators,
+        parse_max_samples(args.max_samples),
+        log_numeric=args.log_numeric,
+        drop_duplicates=args.drop_duplicates,
+    )
     if args.baseline:
         meta["baseline_random_forest_test"] = random_forest_baseline(train_df, test_df)
 

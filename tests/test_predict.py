@@ -108,3 +108,33 @@ def test_env_threshold_overrides_meta(trained, monkeypatch):
 def test_missing_model_file_has_helpful_error(tmp_path):
     with pytest.raises(FileNotFoundError, match="python -m ml.train"):
         predict.Detector.load(tmp_path / "model.joblib")
+
+
+# ---- tuning options --------------------------------------------------
+def test_signed_log1p_handles_negatives_and_zero():
+    from ml.features import signed_log1p
+
+    out = signed_log1p([-np.e + 1, 0.0, np.e - 1])
+    assert out.tolist() == pytest.approx([-1.0, 0.0, 1.0])
+
+
+def test_log_numeric_and_drop_duplicates_options(tmp_path):
+    normal = _flows(300, 0)
+    train_df = pd.concat([normal, normal.head(50), _flows(80, 1)], ignore_index=True)
+    test_df = pd.concat([_flows(100, 0), _flows(30, 1)], ignore_index=True)
+
+    model, meta = train.train(
+        train_df, test_df, n_estimators=30, log_numeric=True, drop_duplicates=True
+    )
+    assert meta["params"]["log_numeric"] is True
+    assert meta["params"]["train_rows_dropped"] == 50
+
+    # the log transform is inside the saved pipeline, so predict needs no flag
+    det = predict.Detector.load(train.save(model, meta, tmp_path))
+    assert 0.0 <= det.detect(test_df.iloc[0].to_dict())["score"] <= 1.0
+
+
+def test_parse_max_samples():
+    assert train.parse_max_samples("auto") == "auto"
+    assert train.parse_max_samples("0.5") == 0.5
+    assert train.parse_max_samples("2048") == 2048
