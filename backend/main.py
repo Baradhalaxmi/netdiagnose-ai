@@ -14,7 +14,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend import errors
-from backend.api import health, incidents, metrics, stats
+from backend.api import health, incidents, metrics, simulator, stats
 from backend.config import get_settings
 from ml.predict import Detector
 
@@ -66,5 +66,5 @@ async def request_log(request: Request, call_next):
 
 
 errors.register(app)
-for r in (health.router, metrics.router, incidents.router, stats.router):
+for r in (health.router, metrics.router, incidents.router, stats.router, simulator.router):
     app.include_router(r)

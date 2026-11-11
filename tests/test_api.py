@@ -273,3 +273,50 @@ def test_diagnose_use_agent_falls_back_to_rules(client, device_id):
 
 def test_diagnose_unknown_incident_is_404(client):
     assert client.post("/incidents/999999/diagnose").json()["error"]["code"] == "NOT_FOUND"
+
+
+# ---- metrics carry anomaly flags; simulator endpoint (Week 6b) -------
+def test_get_metrics_includes_anomaly_flag(client, device_id):
+    post_attack(client, device_id)
+    client.post("/metrics", json={"detect": False, "rows": [{"device_id": device_id, "latency_ms": 5}]})
+    items = client.get("/metrics", params={"device_id": device_id}).json()["items"]
+    flags = {m["is_anomaly"] for m in items}
+    assert flags == {True, None}            # scored+flagged row, and an unscored row
+    assert any(m["anomaly_score"] for m in items)
+
+
+@pytest.fixture
+def sim_client(client):
+    from backend.deps import get_attack_features
+
+    app.dependency_overrides[get_attack_features] = lambda: [features(1, seed=s) for s in range(10)]
+    return client
+
+
+def test_simulator_lists_scenarios(sim_client):
+    names = [s["name"] for s in sim_client.get("/simulator/scenarios").json()]
+    assert names == ["congestion", "server_overload", "link_flap", "ddos"]
+
+
+@pytest.mark.parametrize("name", ["congestion", "ddos"])
+def test_simulator_inject_creates_and_diagnoses_incident(sim_client, device_id, name):
+    r = sim_client.post(f"/simulator/scenarios/{name}", params={"device": "test-api-dev"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["incident"]["created"] and body["flagged"] >= 1
+    assert body["correct"] is True and body["diagnosis"]["probable_cause"] == body["expected_cause"]
+
+
+def test_simulator_unknown_scenario_and_device(sim_client):
+    assert sim_client.post("/simulator/scenarios/meteor").status_code == 404
+    r = sim_client.post("/simulator/scenarios/ddos", params={"device": "nope"})
+    assert r.status_code == 404 and "nope" in r.json()["error"]["message"]
+
+
+def test_simulator_disabled_in_production(sim_client):
+    from backend.config import Settings
+    from backend.deps import settings_dep
+
+    app.dependency_overrides[settings_dep] = lambda: Settings(_env_file=None, env="production")
+    r = sim_client.post("/simulator/scenarios/ddos")
+    assert r.status_code == 403 and r.json()["error"]["code"] == "FORBIDDEN"

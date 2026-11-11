@@ -7,7 +7,7 @@ from datetime import datetime
 
 from sqlalchemy import func, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from backend.db.models import Anomaly, Device, ModelRegistry, NetworkMetric
 
@@ -58,7 +58,10 @@ def get_metrics(
         q = q.where(NetworkMetric.ts < end)
     total = session.scalar(select(func.count()).select_from(q.subquery()))
     items = session.scalars(
-        q.order_by(NetworkMetric.ts.desc()).limit(limit).offset(offset)
+        q.options(selectinload(NetworkMetric.anomaly))
+        .order_by(NetworkMetric.ts.desc())
+        .limit(limit)
+        .offset(offset)
     ).all()
     return list(items), int(total or 0)
 

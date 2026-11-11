@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     incident_quiet_minutes: int = 10
     diagnosis_baseline_minutes: int = 60       # normal history used as the device baseline
 
+    dataset_path: str = "data/raw/UNSW_NB15_testing-set.csv"   # attack flows for /simulator
+
     agent_enabled: bool = False
     agent_max_tool_calls: int = 6
     llm_provider: str = "anthropic"

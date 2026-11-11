@@ -87,6 +87,17 @@ class MetricOut(ORMModel):
     cpu_usage_pct: float | None
     interface_utilization_pct: float | None
     source: str
+    scenario: str | None = None
+    is_anomaly: bool | None = None       # None = not scored
+    anomaly_score: float | None = None
+
+    @classmethod
+    def from_metric(cls, m) -> "MetricOut":
+        out = cls.model_validate(m)
+        if m.anomaly is not None:
+            out.is_anomaly = m.anomaly.is_anomaly
+            out.anomaly_score = m.anomaly.score
+        return out
 
 
 class IncidentTouched(BaseModel):

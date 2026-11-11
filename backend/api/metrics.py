@@ -36,7 +36,8 @@ def get_metrics(
     session: Session = Depends(get_session),
 ):
     items, total = crud.get_metrics(session, device_id, from_, to, page.limit, page.offset)
-    return Page(items=items, total=total, limit=page.limit, offset=page.offset)
+    return Page(items=[MetricOut.from_metric(m) for m in items], total=total,
+                limit=page.limit, offset=page.offset)
 
 
 @router.post("/metrics", response_model=MetricsIngestResult, status_code=201)
