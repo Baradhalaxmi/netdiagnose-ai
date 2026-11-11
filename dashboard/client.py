@@ -12,7 +12,7 @@ import requests
 import streamlit as st
 
 BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000").rstrip("/")
-TIMEOUT = 60  # injecting a scenario writes ~70 rows and runs a diagnosis
+TIMEOUT = 180  # an AI diagnosis with a few tool calls can take a minute or two
 
 
 class ApiError(Exception):
@@ -23,7 +23,7 @@ class ApiError(Exception):
         self.code = code
 
 
-def _request(method: str, path: str, **kwargs):
+def _request(method: str, path: str, raw: bool = False, **kwargs):
     try:
         r = requests.request(method, f"{BASE_URL}{path}", timeout=TIMEOUT, **kwargs)
     except requests.ConnectionError as exc:
@@ -35,7 +35,7 @@ def _request(method: str, path: str, **kwargs):
             raise ApiError(err["message"], err["code"])
         except (ValueError, KeyError):
             raise ApiError(f"HTTP {r.status_code}: {r.text[:200]}") from None
-    return r.json()
+    return r if raw else r.json()
 
 
 def _clean(params: dict) -> dict:
@@ -80,10 +80,12 @@ def scenarios() -> list[dict]:
 
 
 # ---- writes (clear the cache) ----------------------------------------
-def diagnose(incident_id: int, force: bool = False) -> list[dict]:
-    out = _request("POST", f"/incidents/{incident_id}/diagnose", params={"force": force})
+def diagnose(incident_id: int, force: bool = False, use_agent: bool = False) -> dict:
+    """Returns {"diagnoses": [...], "fallback_reason": str | None}."""
+    r = _request("POST", f"/incidents/{incident_id}/diagnose",
+                 params={"force": force, "use_agent": use_agent}, raw=True)
     st.cache_data.clear()
-    return out
+    return {"diagnoses": r.json(), "fallback_reason": r.headers.get("X-Agent-Fallback-Reason")}
 
 
 def update_incident(incident_id: int, **fields) -> dict:

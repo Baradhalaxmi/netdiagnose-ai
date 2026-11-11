@@ -85,7 +85,8 @@ def _device(client: httpx.Client, hostname: str) -> dict:
 
 
 def run_scenario(client: httpx.Client, name: str, hostname: str | None,
-                 attack_features: list[dict], rng: np.random.Generator) -> dict:
+                 attack_features: list[dict], rng: np.random.Generator,
+                 agent: bool = False) -> dict:
     s = SCENARIOS[name]
     device = _device(client, hostname or s.default_device)
     baseline, fault = scenario_payloads(name, device, attack_features,
@@ -101,13 +102,26 @@ def run_scenario(client: httpx.Client, name: str, hostname: str | None,
     inc = result["incidents_touched"][-1]
     [diag] = client.post(f"/incidents/{inc['id']}/diagnose",
                          params={"force": True}).raise_for_status().json()
-    return {
+    out = {
         "scenario": name, "device": device["hostname"], "incident": inc["code"],
         "flagged": result["anomalies"], "expected": s.expected_cause,
         "top_cause": diag["probable_cause"], "confidence": diag["confidence"],
         "alternatives": diag["alternatives"],
         "correct": diag["probable_cause"] == s.expected_cause,
     }
+    if agent:
+        r = client.post(f"/incidents/{inc['id']}/diagnose", params={"use_agent": True},
+                        timeout=300).raise_for_status()
+        diags = r.json()
+        ai = next((d for d in diags if d["source"] == "ai_agent"), None)
+        evidence = {e["id"] for e in client.get(f"/incidents/{inc['id']}").json()["evidence"]}
+        out["ai"] = None if ai is None else {
+            "cause": ai["probable_cause"], "cited": ai["cited_evidence"],
+            "citations_valid": set(ai["cited_evidence"]) <= evidence,
+            "alternatives": [a["cause"] for a in ai["alternatives"]],
+        }
+        out["ai_fallback"] = r.headers.get("X-Agent-Fallback-Reason")
+    return out
 
 
 def replay_dataset(client: httpx.Client, csv_path: str, rate: float, limit: int, seed: int) -> None:
@@ -137,6 +151,8 @@ def main(argv=None) -> None:
     sc.add_argument("name", choices=[*SCENARIOS, "all"])
     sc.add_argument("--device", help="hostname (default: the scenario's typical device)")
     sc.add_argument("--csv", default=DATASET, help="source of attack-flow features")
+    sc.add_argument("--agent", action="store_true",
+                    help="also run the AI agent (needs AGENT_ENABLED=true and an API key)")
 
     ds = sub.add_parser("dataset", help="stream dataset rows into POST /metrics")
     ds.add_argument("--csv", default=DATASET)
@@ -152,7 +168,9 @@ def main(argv=None) -> None:
         rng = np.random.default_rng(args.seed)
         features = load_attack_features(args.csv, seed=args.seed or 0)
         names = list(SCENARIOS) if args.name == "all" else [args.name]
-        results = [run_scenario(client, n, args.device, features, rng) for n in names]
+        results = [run_scenario(client, n, args.device, features, rng,
+                                    agent=args.cmd == "scenario" and args.agent)
+                       for n in names]
 
     for r in results:
         mark = "OK " if r["correct"] else "MISS"
@@ -161,6 +179,14 @@ def main(argv=None) -> None:
               f"got: {r['top_cause']} ({r.get('confidence', 0):.2f})")
         for alt in r.get("alternatives", []):
             print(f"{'':>8}alternative: {alt['cause']} ({alt['confidence']:.2f})")
+        if "ai" in r:
+            if r["ai"] is None:
+                print(f"{'':>8}AI agent: fell back to rules ({r['ai_fallback']})")
+            else:
+                a = r["ai"]
+                print(f"{'':>8}AI agent: {a['cause']} | cites {a['cited']} "
+                      f"({'valid' if a['citations_valid'] else 'INVALID'}) | "
+                      f"alternatives: {', '.join(a['alternatives']) or '-'}")
     if len(results) > 1:
         print(f"\nScenario accuracy: {sum(r['correct'] for r in results)}/{len(results)}")
 

@@ -69,7 +69,7 @@ def fake_api(monkeypatch):
             "scenario": name, "device": device, "expected_cause": "Network congestion",
             "fault_rows": 10, "flagged": 10, "correct": True,
             "incident": {"id": 7, "code": "INC-0007", "created": True}, "diagnosis": DIAGNOSIS},
-        "diagnose": lambda i, force=False: calls.append(("diagnose", i, force)) or [DIAGNOSIS],
+        "diagnose": lambda i, force=False, use_agent=False: calls.append(("diagnose", i, force)) or {"diagnoses": [DIAGNOSIS], "fallback_reason": None},
         "update_incident": lambda i, **f: calls.append(("patch", i, f)) or incident_detail(),
     }
     for name, fn in fakes.items():
@@ -110,7 +110,7 @@ def test_incident_detail_shows_cause_evidence_and_steps(fake_api):
     assert any(m.value == "### Probable cause: Network congestion" for m in at.markdown)
     evidence = at.dataframe[0].value
     assert list(evidence["id"]) == [101, 102]
-    assert list(evidence["cited"]) == ["✔", ""]
+    assert list(evidence["cited"]) == ["rules", ""]
     assert any("Identify top talkers" in m.value for m in at.markdown)
 
 
@@ -130,3 +130,21 @@ def test_api_down_shows_error_not_traceback(monkeypatch):
         monkeypatch.setattr(client, name, down)
     at = run("overview")
     assert not at.exception and "Cannot reach the API" in at.error[0].value
+
+
+AI_DIAGNOSIS = {**DIAGNOSIS, "id": 13, "source": "ai_agent", "confidence": 0.85,
+                "probable_cause": "Network congestion",
+                "alternatives": [{"cause": "Traffic flood", "why_less_likely": "No surge vs baseline"}],
+                "cited_evidence": [101, 102], "report_markdown": "### AI diagnosis: Network congestion"}
+
+
+def test_incident_detail_shows_rules_and_ai_side_by_side(fake_api, monkeypatch):
+    monkeypatch.setattr(client, "incident",
+                        lambda i: incident_detail() | {"diagnoses": [AI_DIAGNOSIS, DIAGNOSIS]})
+    at = run("incident_detail", incident_id=7)
+    assert not at.exception
+    # the headline and ranked-causes chart stay on the rules diagnosis even when AI is newer
+    assert any(m.value == "### Probable cause: Network congestion" for m in at.markdown)
+    assert any(m.value == "### Rules vs AI agent" for m in at.markdown)
+    assert any("confidence high" in c.value for c in at.caption)
+    assert list(at.dataframe[0].value["cited"]) == ["rules, AI", "AI"]

@@ -69,6 +69,18 @@ Each scenario writes an hour of normal telemetry, then a 5-minute fault carrying
 
 The offline scenario test (`tests/test_scenarios.py`) repeats this over 50 random seeds per scenario: 200/200 correct. Fault profiles are synthetic, so this measures the rule logic, not real-world accuracy.
 
+## Agent design & guardrails
+The AI agent (`agent/`) explains and cross-checks the rule engine; it never invents facts or changes data.
+
+- **Grounded input:** the incident and the rule engine's evidence rows go in the first message; the agent can then call four read-only tools (`get_metric_timeseries`, `compare_baseline`, `get_device_status`, `get_previous_incidents`), all bound to that one incident's device.
+- **Structured output:** it must finish by calling `submit_diagnosis` (strict JSON schema): cause, confidence band, evidence statements each citing an `evidence_id`, alternatives, next steps.
+- **Validation:** unknown evidence ids are rejected; confidence may not exceed the strongest rule finding by more than one band. One retry with the problems listed, then fallback.
+- **Fail soft:** provider errors, refusals, invalid output twice, or `AGENT_ENABLED=false` all return the rule-based diagnosis with `X-Agent-Fallback-Reason`.
+- **Bounded:** at most `AGENT_MAX_TOOL_CALLS` (6) data-tool calls and a hard loop limit; tokens and latency are stored with each diagnosis.
+- **Prompt injection:** monitored data is fenced in `<incident_data>` and the system prompt says it is data, not instructions; tools expose no raw IP addresses.
+- **Cost:** results are cached per (incident, evidence hash); the system prompt and tool list are identical for every call so they are prompt-cached.
+- **Model:** Claude Opus 5.5 (`claude-opus-5-5`, effort `medium`) via `agent/llm_client.py`, the only file that touches the provider SDK. Server-side refusal fallback (`fallbacks: "default"`) is enabled.
+
 ## Limitations
 - UNSW-NB15 is an intrusion dataset; CPU and interface utilisation are **synthetic**.
 - Isolation Forest is unsupervised and can miss subtle attacks.

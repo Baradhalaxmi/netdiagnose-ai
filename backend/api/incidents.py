@@ -6,7 +6,8 @@ from sqlalchemy.orm import Session, selectinload
 
 from backend.config import Settings
 from backend.db.models import Device, Diagnosis, Incident
-from backend.deps import Pagination, get_session, settings_dep
+from agent.runner import run_agent
+from backend.deps import Pagination, get_llm, get_session, settings_dep
 from backend.errors import AppError
 from backend.schemas.common import Page
 from backend.schemas.incidents import (
@@ -102,16 +103,26 @@ def diagnose_incident(
     force: bool = Query(False, description="rebuild evidence and ignore the cache"),
     session: Session = Depends(get_session),
     settings: Settings = Depends(settings_dep),
+    llm=Depends(get_llm),
 ):
-    """Collect evidence, run the rule engine, store and return the diagnosis.
+    """Collect evidence, run the rule engine and (with `use_agent=true`) the AI agent.
 
-    The AI agent arrives in Week 7; until then `use_agent=true` returns the
-    rules diagnosis with header `X-Agent-Fallback: true`.
+    Returns the rules diagnosis, followed by the AI diagnosis when the agent
+    succeeds. If the agent is disabled, fails validation, is refused or the
+    provider errors, only the rules diagnosis is returned, with headers
+    `X-Agent-Fallback: true` and `X-Agent-Fallback-Reason: <reason>`.
     """
-    diag, _ = diagnosis_service.diagnose(session, incident_id, settings, force=force)
-    if use_agent:
+    if not use_agent:
+        diag, _ = diagnosis_service.diagnose(session, incident_id, settings, force=force)
+        return [diag]
+
+    run = run_agent(session, incident_id, settings, llm, force=force)
+    if run.ai is None:
         response.headers["X-Agent-Fallback"] = "true"
-    return [diag]
+        response.headers["X-Agent-Fallback-Reason"] = run.fallback_reason or "unknown"
+        return [run.rules]
+    response.headers["X-Agent-Cached"] = str(run.cached).lower()
+    return [run.rules, run.ai]
 
 
 def _load(session: Session, incident_id: int) -> Incident:

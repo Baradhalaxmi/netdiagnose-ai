@@ -21,6 +21,23 @@ def settings_dep() -> Settings:
     return get_settings()
 
 
+@lru_cache(maxsize=1)
+def _llm(provider: str, model: str, key: str, effort: str):
+    from agent.llm_client import AnthropicLLM
+
+    if provider != "anthropic":
+        raise ValueError(f"LLM_PROVIDER {provider!r} is not supported (only 'anthropic')")
+    return AnthropicLLM(get_settings())
+
+
+def get_llm():
+    """The LLM client, or None when AGENT_ENABLED=false (rules-only mode)."""
+    s = get_settings()
+    if not s.agent_enabled:
+        return None
+    return _llm(s.llm_provider, s.llm_model, s.llm_api_key, s.agent_effort)
+
+
 @lru_cache(maxsize=2)
 def _attack_features(path: str) -> tuple[dict, ...]:
     from simulator.replay import load_attack_features

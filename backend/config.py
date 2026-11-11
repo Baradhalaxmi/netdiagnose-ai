@@ -29,9 +29,10 @@ class Settings(BaseSettings):
 
     agent_enabled: bool = False
     agent_max_tool_calls: int = 6
+    agent_effort: str = "medium"               # low | medium | high | xhigh | max
     llm_provider: str = "anthropic"
-    llm_model: str = ""
-    llm_api_key: str = ""
+    llm_model: str = ""                        # empty -> agent.llm_client.DEFAULT_MODEL
+    llm_api_key: str = ""                      # empty -> ANTHROPIC_API_KEY / `ant auth login`
 
     @field_validator("anomaly_threshold", mode="before")
     @classmethod
