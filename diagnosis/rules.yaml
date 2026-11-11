@@ -1,0 +1,81 @@
+# NetDiagnose AI — diagnosis rules (docs/architecture.md section 9.3)
+#
+# Each rule matches when all of its conditions hold on the incident's evidence
+# (observed = mean over the incident window). Partially matched rules are
+# still reported as alternatives if at least half their conditions hold.
+#
+# Ranking score = confidence x matched_conditions / total_conditions.
+#
+# Condition forms:
+#   {metric: packet_loss_pct, op: ">", value: 10}          absolute threshold
+#   {metric: throughput_mbps, op: ">", baseline_ratio: 3}  observed > 3 x device baseline
+#
+# Metrics: latency_ms, packet_loss_pct, jitter_ms, throughput_mbps,
+#          cpu_usage_pct, interface_utilization_pct
+
+- id: R-CONGESTION
+  cause: Network congestion
+  all:
+    - {metric: packet_loss_pct, op: ">", value: 10}
+    - {metric: latency_ms, op: ">", value: 200}
+    - {metric: interface_utilization_pct, op: ">", value: 85}
+  confidence: 0.8
+  investigate:
+    - Identify top talkers on the affected interface
+    - Check QoS policy and queue drops
+    - Compare with the same hour on previous days
+
+- id: R-CONGESTION-WEAK
+  cause: Possible congestion
+  all:
+    - {metric: packet_loss_pct, op: ">", value: 5}
+    - {metric: interface_utilization_pct, op: ">", value: 85}
+  confidence: 0.5
+  investigate:
+    - Watch interface utilisation and drops over the next hour
+    - Check whether a backup or batch job is running
+
+- id: R-SERVER-OVERLOAD
+  cause: Server overload
+  all:
+    - {metric: cpu_usage_pct, op: ">", value: 90}
+    - {metric: latency_ms, op: ">", value: 200}
+  confidence: 0.8
+  investigate:
+    - Check top processes and run queue on the server
+    - Look for a recent deploy, cron job or traffic spike to this service
+    - Check memory pressure and disk I/O wait
+
+- id: R-LINK-FAULT
+  cause: Link failure / flapping
+  all:
+    - {metric: packet_loss_pct, op: ">", value: 30}
+  confidence: 0.7
+  investigate:
+    - Check interface error counters (CRC, input errors) and up/down events
+    - Inspect cabling, optics and duplex/speed negotiation
+    - Check the peer device's logs for the same interface
+
+- id: R-JITTER-QOS
+  cause: Jitter / QoS problem
+  all:
+    - {metric: jitter_ms, op: ">", value: 30}
+    - {metric: packet_loss_pct, op: "<", value: 5}
+  confidence: 0.6
+  investigate:
+    - Verify voice/video traffic is marked and queued with priority
+    - Check for bursty flows sharing the same queue
+
+# Confidence 0.85, above R-CONGESTION's 0.8: a flood also produces
+# congestion symptoms, and a sudden surge versus baseline is the more
+# specific explanation, so it should win when both fully match.
+- id: R-TRAFFIC-FLOOD
+  cause: Possible DoS / traffic flood
+  all:
+    - {metric: throughput_mbps, op: ">", baseline_ratio: 3}
+    - {metric: interface_utilization_pct, op: ">", value: 90}
+  confidence: 0.85
+  investigate:
+    - Identify the top source addresses and destination ports
+    - Check whether the traffic is spoofed or from a few sources
+    - Consider rate limiting or upstream filtering

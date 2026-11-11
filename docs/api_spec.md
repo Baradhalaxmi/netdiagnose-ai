@@ -131,6 +131,8 @@ Runs evidence collection and the rule engine; optionally the AI agent.
 Query/body: `use_agent` (bool, default `false`), `force` (bool, bypass cache).
 Response `200`: the new diagnosis objects (same shape as above). If the agent fails validation or the provider errors, the response includes only the rules diagnosis and a header `X-Agent-Fallback: true`.
 
+As implemented (Week 6a): evidence compares the incident window (first to last anomaly) with the device's non-anomalous rows from the previous `DIAGNOSIS_BASELINE_MINUTES` (default 60; falls back to the last 200 such rows). Evidence is built once per incident; the rules diagnosis is cached by evidence hash, and `force=true` rebuilds both. Until the agent exists (Week 7), `use_agent=true` returns the rules diagnosis with `X-Agent-Fallback: true`.
+
 ### `PATCH /incidents/{id}`
 Update `status` (`investigating`, `resolved`, `closed`) or `summary`.
 

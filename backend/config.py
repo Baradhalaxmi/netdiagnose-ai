@@ -23,6 +23,7 @@ class Settings(BaseSettings):
 
     incident_window_minutes: int = 5
     incident_quiet_minutes: int = 10
+    diagnosis_baseline_minutes: int = 60       # normal history used as the device baseline
 
     agent_enabled: bool = False
     agent_max_tool_calls: int = 6

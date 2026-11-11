@@ -1,21 +1,24 @@
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
+from backend.config import Settings
 from backend.db.models import Device, Diagnosis, Incident
-from backend.deps import Pagination, get_session
+from backend.deps import Pagination, get_session, settings_dep
 from backend.errors import AppError
 from backend.schemas.common import Page
 from backend.schemas.incidents import (
     DeviceRef,
+    DiagnosisOut,
     IncidentDetail,
     IncidentPatch,
     IncidentSummary,
     Severity,
     Status,
 )
+from backend.services import diagnosis_service
 
 router = APIRouter(prefix="/incidents", tags=["incidents"])
 
@@ -89,6 +92,26 @@ def patch_incident(incident_id: int, body: IncidentPatch, session: Session = Dep
         inc.summary = body.summary
     session.commit()
     return _detail(_load(session, incident_id))
+
+
+@router.post("/{incident_id}/diagnose", response_model=list[DiagnosisOut])
+def diagnose_incident(
+    incident_id: int,
+    response: Response,
+    use_agent: bool = False,
+    force: bool = Query(False, description="rebuild evidence and ignore the cache"),
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(settings_dep),
+):
+    """Collect evidence, run the rule engine, store and return the diagnosis.
+
+    The AI agent arrives in Week 7; until then `use_agent=true` returns the
+    rules diagnosis with header `X-Agent-Fallback: true`.
+    """
+    diag, _ = diagnosis_service.diagnose(session, incident_id, settings, force=force)
+    if use_agent:
+        response.headers["X-Agent-Fallback"] = "true"
+    return [diag]
 
 
 def _load(session: Session, incident_id: int) -> Incident:

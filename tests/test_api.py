@@ -215,3 +215,61 @@ def test_stats_summary_shape(client, device_id):
     s = client.get("/stats/summary").json()
     assert s["devices"] >= 1 and s["open_incidents"] >= 1 and s["anomalies_24h"] >= 1
     assert set(s["incidents_by_severity"]) == {"low", "medium", "high", "critical"}
+
+
+# ---- diagnosis (Week 6a) ---------------------------------------------
+def inject(client, device_id, name):
+    """Post a scenario's baseline + fault rows; return the incident id."""
+    import numpy as np
+
+    from simulator.replay import scenario_payloads
+
+    attack = [features(1, seed=s) for s in range(10)]
+    device = {"id": device_id, "link_capacity_mbps": 1000}
+    base, fault = scenario_payloads(name, device, attack, datetime.now(timezone.utc),
+                                    np.random.default_rng(0))
+    assert client.post("/metrics", json={"detect": False, "rows": base}).status_code == 201
+    body = client.post("/metrics", json={"rows": fault}).json()
+    assert body["anomalies"] >= 1
+    return body["incidents_touched"][-1]["id"]
+
+
+@pytest.mark.parametrize("name", ["congestion", "server_overload", "link_flap", "ddos"])
+def test_diagnose_end_to_end_finds_true_cause(client, device_id, name):
+    from simulator.scenarios import SCENARIOS
+
+    inc_id = inject(client, device_id, name)
+    r = client.post(f"/incidents/{inc_id}/diagnose")
+    assert r.status_code == 200, r.text
+    [diag] = r.json()
+    assert diag["source"] == "rules"
+    assert diag["probable_cause"] == SCENARIOS[name].expected_cause
+    assert diag["cited_evidence"] and diag["recommendations"]
+
+    detail = client.get(f"/incidents/{inc_id}").json()
+    evidence_ids = {e["id"] for e in detail["evidence"]}
+    assert set(diag["cited_evidence"]) <= evidence_ids          # citations point at real rows
+    assert detail["diagnoses"][0]["id"] == diag["id"]
+    listed = client.get("/incidents", params={"device_id": device_id}).json()["items"]
+    assert listed[0]["top_cause"] == SCENARIOS[name].expected_cause
+
+
+def test_diagnose_is_cached_and_force_rebuilds(client, device_id):
+    inc_id = inject(client, device_id, "congestion")
+    first = client.post(f"/incidents/{inc_id}/diagnose").json()[0]
+    again = client.post(f"/incidents/{inc_id}/diagnose").json()[0]
+    assert again["id"] == first["id"]
+    forced = client.post(f"/incidents/{inc_id}/diagnose", params={"force": True}).json()[0]
+    assert forced["id"] != first["id"]
+    detail = client.get(f"/incidents/{inc_id}").json()
+    assert len(detail["diagnoses"]) == 1 and len(detail["evidence"]) == 6
+
+
+def test_diagnose_use_agent_falls_back_to_rules(client, device_id):
+    inc_id = inject(client, device_id, "link_flap")
+    r = client.post(f"/incidents/{inc_id}/diagnose", params={"use_agent": True})
+    assert r.headers["X-Agent-Fallback"] == "true" and r.json()[0]["source"] == "rules"
+
+
+def test_diagnose_unknown_incident_is_404(client):
+    assert client.post("/incidents/999999/diagnose").json()["error"]["code"] == "NOT_FOUND"

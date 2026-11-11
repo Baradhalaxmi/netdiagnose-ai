@@ -57,12 +57,17 @@ Tuning: 24 configs, chosen on validation F1 only ([docs/tuning_results.md](docs/
 
 Isolation Forest misses the most on Fuzzers (49% detected), Shellcode (50%) and Reconnaissance (59%), and catches Generic (99%), Backdoor (93%) and DoS (91%) attacks well.
 
-| Scenario | Expected cause | Top-ranked cause | Correct |
-|---|---|---|---|
-| Congestion | Network congestion | _tbd_ | _tbd_ |
-| Server overload | Server overload | _tbd_ | _tbd_ |
-| Link flap | Link failure | _tbd_ | _tbd_ |
-| DDoS | Traffic flood | _tbd_ | _tbd_ |
+### Diagnosis on injected faults
+Each scenario writes an hour of normal telemetry, then a 5-minute fault carrying real attack-flow features, through the live API (`python -m simulator.replay scenario all`). The detector opens an incident; the rule engine ranks causes against the device baseline.
+
+| Scenario | Expected cause | Top-ranked cause (confidence) | Runner-up | Correct |
+|---|---|---|---|---|
+| Congestion | Network congestion | Network congestion (0.80) | Possible congestion (0.50) | ✅ |
+| Server overload | Server overload | Server overload (0.80) | – | ✅ |
+| Link flap | Link failure / flapping | Link failure / flapping (0.70) | Possible congestion (0.25) | ✅ |
+| DDoS | Possible DoS / traffic flood | Possible DoS / traffic flood (0.85) | Network congestion (0.80) | ✅ |
+
+The offline scenario test (`tests/test_scenarios.py`) repeats this over 50 random seeds per scenario: 200/200 correct. Fault profiles are synthetic, so this measures the rule logic, not real-world accuracy.
 
 ## Limitations
 - UNSW-NB15 is an intrusion dataset; CPU and interface utilisation are **synthetic**.

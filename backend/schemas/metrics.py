@@ -48,6 +48,7 @@ class MetricIn(BaseModel):
         None, description="UNSW-NB15 flow fields; required for anomaly detection"
     )
     source: str = Field("live", pattern="^(dataset|synthetic|live)$")
+    scenario: str | None = Field(None, max_length=50, description="injected fault name (ground truth)")
 
     @field_validator("ts")
     @classmethod
